@@ -19,6 +19,7 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+from sat_com_application.simulation_manager import Simulation, SimulationManager
 
 # Modifications :
 # - Created transform_text_to_isl
@@ -28,11 +29,11 @@
 # Source: https://github.com/snkas/hypatia
 
 from sat_com_builder.two_line_elements.two_line_element_file import TwoLineElementFile
-from sat_com_model.exception import (
+from sat_com_model.exceptions import (
     TopologyObjectNotFoundError,
     TopologyConnectionError,
 )
-from sat_com_model.model import Simulation
+from sat_com_model.models import Simulation, InterSatelliteLinkDirection
 
 
 def generate_inter_satellite_links_grid_from_two_line_element_file(
@@ -47,6 +48,7 @@ def generate_inter_satellite_links_grid_from_two_line_element_file(
     :param isl_shift:               ISL shift between orbits (e.g., if satellite id in orbit is X,
                                     does it also connect to the satellite at X in the adjacent orbit)
     :param idx_offset:              Index offset (e.g., if you have multiple shells)
+    :return : list of inter-satellite links under the following format (int, int, InterSatelliteLinkDirection)
     """
 
     if number_orbits < 3 or number_satellites_per_orbit < 3:
@@ -72,6 +74,7 @@ def generate_inter_satellite_links_grid_from_two_line_element_file(
                 (
                     idx_offset + min(sat, sat_same_orbit),
                     idx_offset + max(sat, sat_same_orbit),
+                    InterSatelliteLinkDirection.ORBITAL,
                 )
             )
 
@@ -80,33 +83,43 @@ def generate_inter_satellite_links_grid_from_two_line_element_file(
                 (
                     idx_offset + min(sat, sat_adjacent_orbit),
                     idx_offset + max(sat, sat_adjacent_orbit),
+                    InterSatelliteLinkDirection.ADJACENT,
                 )
             )
     return list_inter_satellite_links
 
 
 def transform_grid_to_inter_satellite_links(
-    simulation_context: Simulation, list_isl: list
+    simulation_service: SimulationManager, list_isl: list
 ):
-    for a, b in list_isl:
+    """
+    This function will create inter satellite links based on the ISL list previously generated.
+    :param simulation_service: SimulationManager object
+    :param list_isl: list of vector like object (int, int, InterSatelliteLinkDirection)
+    :return:
+    """
+    for a, b, type_link in list_isl:
         satellite_a = None
         satellite_b = None
         try:
-            satellite_a = simulation_context.get_satellite_by_object_id(a)
+            satellite_a = simulation_service.get_satellite_by_object_id(a)
         except TopologyObjectNotFoundError:
             print("Satellite {sat_id} not found".format(sat_id=a))
 
         try:
-            satellite_b = simulation_context.get_satellite_by_object_id(b)
+            satellite_b = simulation_service.get_satellite_by_object_id(b)
 
         except TopologyObjectNotFoundError:
             print("Satellite {sat_id} not found".format(sat_id=b))
 
         if satellite_a is not None and satellite_b is not None:
             try:
-                simulation_context.create_inter_satellite_link_connection(
-                    satellite_a, satellite_b
+                created_link = (
+                    simulation_service.create_inter_satellite_link_connection(
+                        satellite_a, satellite_b
+                    )
                 )
+                created_link.inter_satellite_direction = type_link
             except TopologyConnectionError as tpe:
                 print(
                     "Failed to connect {sat_a} and {sat_b} : {message}".format(
@@ -116,9 +129,16 @@ def transform_grid_to_inter_satellite_links(
 
 
 def create_inter_satellite_link_from_two_line_element(
-    simulation_context: Simulation, two_line_element: TwoLineElementFile
+    simulation_service: SimulationManager, two_line_element: TwoLineElementFile
 ):
+    """
+    Creates inter_satellite_link from two list element. First extract ISL configuration from TLE, then it will transform
+    ISL configuration into inter satellite link object.
+    :param simulation_service: SimulationManager instance
+    :param two_line_element: TwoLineElementFile instance
+    :return:
+    """
     isl_list = generate_inter_satellite_links_grid_from_two_line_element_file(
         two_line_element.count_of_orbit, two_line_element.satellite_count_per_orbit, 1
     )
-    transform_grid_to_inter_satellite_links(simulation_context, isl_list)
+    transform_grid_to_inter_satellite_links(simulation_service, isl_list)

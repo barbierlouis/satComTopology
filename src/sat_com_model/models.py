@@ -1,16 +1,36 @@
 from enum import Enum
 
-from .exception import (
+from .exceptions import (
     InterSatelliteConnectionError,
     GroundStationConnectionError,
     UserTerminalConnectionError,
     ConnectionBetweenSameSatelliteForbiddenError,
-    TopologyObjectNotFoundError,
     TopologyIdentifierNotDefinedError,
     OrbitalObjectMovementModelUndefinedError,
+    DistanceModelUndefinedError,
 )
 
-IslDirection = Enum("IslDirection", ["TOP", "BACK", "ADJACENT", "UNDEFINED"])
+
+class InterSatelliteLinkDirection(Enum):
+    ORBITAL = 1
+    ADJACENT = 2
+    UNDEFINED = 3
+
+
+class SpatialPosition:
+    longitude: float
+    latitude: float
+    altitude: float
+
+    def __init__(
+        self, longitude: float = None, latitude: float = None, altitude: float = None
+    ):
+        self.longitude = longitude
+        self.latitude = latitude
+        self.altitude = altitude
+
+    def __str__(self):
+        return f"Longitude: {self.longitude}, Latitude: {self.latitude}, Altitude: {self.altitude}"
 
 
 class SpatialPoint:
@@ -18,19 +38,22 @@ class SpatialPoint:
     This is the lower element of the stack. Every element in the topology has a position
     """
 
-    longitude: float
-    latitude: float
-    altitude: float
+    spatial_position: SpatialPosition
 
     simulation_context: "Simulation"
 
-    def __str__(self):
-        longitude, latitude, altitude = self.get_coordinates()
-        coordinate = f"Coordinate : Longitude: {longitude}, Latitude: {latitude} Altitude: {altitude}"
-        return coordinate
+    def __init__(self):
+        self.spatial_position = SpatialPosition()
 
-    def get_coordinates(self) -> (float, float, float):
-        return self.longitude, self.latitude, self.altitude
+    def __str__(self):
+        return self.spatial_position.__str__()
+
+    def get_coordinates(self) -> SpatialPosition:
+        """
+        Get the object coordinates. The default format is longitude, latitude and elevation.
+        :return:
+        """
+        return self.spatial_position
 
     def set_position(self, **kwargs):
         """
@@ -38,9 +61,15 @@ class SpatialPoint:
         :param kwargs: latitude, longitude, altitude. If one of them is empty, value will remain the same
         :return:
         """
-        self.latitude = kwargs.get("latitude", self.latitude)
-        self.longitude = kwargs.get("longitude", self.longitude)
-        self.altitude = kwargs.get("altitude", self.altitude)
+        self.spatial_position.latitude = kwargs.get(
+            "latitude", self.spatial_position.latitude
+        )
+        self.spatial_position.longitude = kwargs.get(
+            "longitude", self.spatial_position.longitude
+        )
+        self.spatial_position.altitude = kwargs.get(
+            "altitude", self.spatial_position.altitude
+        )
 
 
 class TopologyObject(SpatialPoint):
@@ -93,10 +122,9 @@ class MovementModel:
         """
         pass
 
-    def get_longitude_latitude(self) -> (float, float, float):
+    def get_longitude_latitude(self) -> SpatialPosition:
         """
         Return the longitude, latitude  and elevation on ground of the orbital object
-        :param date: Specify the date at which time you want the position
         :return:
         """
         pass
@@ -117,9 +145,6 @@ class OrbitalObject(TopologyObject):
 
     movement_model: MovementModel = None
 
-    def __str__(self):
-        return super().__str__()
-
     def set_movement_model(self, movement_model: MovementModel):
         """
         Movement model is an abstract class. You have to implement your movement model class depending on
@@ -130,9 +155,12 @@ class OrbitalObject(TopologyObject):
         :return:
         """
         self.movement_model = movement_model
-        self.update()
 
     def get_movement_model(self) -> MovementModel:
+        """
+        Return the movement mode. Mandatory if you want to calculate position of an orbital object
+        :return:
+        """
         if self.movement_model is None:
             raise OrbitalObjectMovementModelUndefinedError(
                 "You can't use movement features because you didn't specify a movement model"
@@ -140,13 +168,22 @@ class OrbitalObject(TopologyObject):
         return self.movement_model
 
     def is_ascending(self) -> bool:
+        """
+        Return if the orbital object is in ascending phase or descending phase
+        :return:
+        """
         return self.get_movement_model().is_ascending()
 
-    def get_coordinates(self) -> (float, float, float):
+    def get_coordinates(self) -> SpatialPosition:
+        """
+        Get the object coordinates. The default format is longitude, latitude and elevation.
+        :return:
+        """
+
         return self.get_movement_model().get_longitude_latitude()
 
     def update(self):
-        self.longitude, self.latitude, self.altitude = self.get_coordinates()
+        self.spatial_position = self.get_coordinates()
 
 
 class Satellite(OrbitalObject):
@@ -172,10 +209,11 @@ class GroundStation(GroundObject):
     type = "GroundStation"
 
     def __init__(self, city_name: str = "unknown"):
+        super().__init__()
         self.city = city_name
-        self.longitude = 0
-        self.latitude = 0
-        self.altitude = 0
+        self.spatial_position.longitude = 0
+        self.spatial_position.latitude = 0
+        self.spatial_position.altitude = 0
 
     def __str__(self):
         return (
@@ -214,7 +252,14 @@ class Link:
 class InterSatelliteLink(Link):
     type = "InterSatelliteLink"
 
-    def connect(self, source: TopologyObject, destination: TopologyObject):
+    inter_satellite_direction: InterSatelliteLinkDirection
+
+    def connect(
+        self,
+        source: TopologyObject,
+        destination: TopologyObject,
+        inter_satellite_direction: InterSatelliteLinkDirection = InterSatelliteLinkDirection.UNDEFINED,
+    ):
         object_are_both_satellites = isinstance(source, Satellite) and isinstance(
             destination, Satellite
         )
@@ -224,6 +269,7 @@ class InterSatelliteLink(Link):
                     source=source.__class__, destination=destination.__class__
                 )
             )
+        self.inter_satellite_direction = inter_satellite_direction
 
         super().connect(source, destination)
 
@@ -274,22 +320,30 @@ class UserTerminalLink(Link):
         super().connect(source, destination)
 
 
-def get_object_by_object_id(
-    object_id: int, topology_objects: list
-) -> Satellite | GroundStation | UserTerminal:
-    matching_objects_iterator = filter(
-        lambda x: x.object_id == object_id, topology_objects
-    )
-    matched_object = list(matching_objects_iterator)
+class DistanceModel:
+    def get_distance_meters(
+        self, spatial_position_1: SpatialPosition, spatial_position_2: SpatialPosition
+    ) -> float:
+        pass
 
-    if len(matched_object) == 1:
-        return matched_object[0]
+    def get_distance_km(
+        self, spatial_position_1: SpatialPosition, spatial_position_2: SpatialPosition
+    ) -> float:
+        pass
 
-    if len(matched_object) > 1:
-        raise Exception()
 
-    if len(matched_object) == 0:
-        raise TopologyObjectNotFoundError()
+def ground_station_link_is_connected_to_ground_station(
+    ground_station_link: GroundStationLink, ground_station_object_id: int
+) -> bool:
+    source = ground_station_link.source
+    destination = ground_station_link.destination
+
+    if isinstance(source, GroundStation):
+        return source.object_id == ground_station_object_id
+    elif isinstance(destination, GroundStation):
+        return destination.object_id == ground_station_object_id
+    else:
+        raise ValueError("This ground station link is corrupted")
 
 
 class Simulation:
@@ -306,6 +360,8 @@ class Simulation:
     user_terminals: list[UserTerminal]
     user_terminal_links: list[UserTerminalLink]
 
+    distance_model: DistanceModel = None
+
     def __init__(self):
         self.simulation_name = "Unknown"
         self.object_uuid_index = 0
@@ -316,23 +372,19 @@ class Simulation:
         self.user_terminals = []
         self.user_terminal_links = []
 
+    def get_distance_model(self) -> DistanceModel:
+        if self.distance_model is None:
+            raise DistanceModelUndefinedError()
+        return self.distance_model
+
+    def set_distance_model(self, distance_model: DistanceModel):
+        self.distance_model = distance_model
+
     def request_an_id(self):
         attributed_id = self.object_uuid_index
         self.object_uuid_index += 1
 
         return attributed_id
-
-    def add_satellite(self, satellite: Satellite):
-        satellite.topology_uniq_id = self.request_an_id()
-        self.satellites.append(satellite)
-
-    def add_ground_station(self, ground_station: GroundStation):
-        ground_station.topology_uniq_id = self.request_an_id()
-        self.ground_stations.append(ground_station)
-
-    def add_user_terminals(self, user_terminal: UserTerminal):
-        user_terminal.topology_uniq_id = self.request_an_id()
-        self.user_terminals.append(user_terminal)
 
     def get_all_topology_objects(self) -> list[TopologyObject]:
         topology_objects = []
@@ -342,72 +394,9 @@ class Simulation:
 
         return topology_objects
 
-    def get_all_links(self) -> list[Link]:
-        all_links = []
-        all_links.extend(self.user_terminal_links)
-        all_links.extend(self.ground_station_links)
-        all_links.extend(self.user_terminal_links)
-
-        return all_links
-
-    def get_satellite_by_object_id(self, object_id: int) -> Satellite:
-        return get_object_by_object_id(object_id, self.satellites)
-
-    def get_ground_station_by_object_id(self, object_id: int) -> GroundStation:
-        return get_object_by_object_id(object_id, self.ground_stations)
-
-    def get_user_terminal_by_object_id(self, object_id: int) -> UserTerminal:
-        return get_object_by_object_id(object_id, self.user_terminals)
-
-    def get_topology_object_from_uniq_id(self, uniq_id: int) -> TopologyObject:
-        matching_objects_iterator = filter(
-            lambda x: x.topology_uniq_id == uniq_id, self.get_all_topology_objects()
-        )
-        matched_object = list(matching_objects_iterator)
-
-        if len(matched_object) == 1:
-            return matched_object[0]
-
-        if len(matched_object) > 1:
-            raise Exception()
-
-        if len(matched_object) == 0:
-            raise TopologyObjectNotFoundError()
-
-    def create_inter_satellite_link_connection(
-        self, satellite_a: Satellite, satellite_b: Satellite
-    ) -> InterSatelliteLink:
-        inter_satellite_link = InterSatelliteLink()
-        inter_satellite_link.connect(satellite_a, satellite_b)
-
-        self.inter_satellite_links.append(inter_satellite_link)
-        return inter_satellite_link
-
-    def create_ground_station_link_connection(
-        self, satellite: Satellite, ground_station: GroundStation
-    ) -> GroundStationLink:
-        ground_station_link = GroundStationLink()
-        ground_station_link.connect(satellite, ground_station)
-
-        self.ground_station_links.append(ground_station_link)
-        return ground_station_link
-
-    def create_user_terminal_link_connection(
-        self, satellite: Satellite, user_terminal: UserTerminal
-    ) -> UserTerminalLink:
-        user_terminal_link = UserTerminalLink()
-        user_terminal_link.connect(satellite, user_terminal)
-
-        self.user_terminal_links.append(user_terminal_link)
-        return user_terminal_link
-
-    def add_all_satellites(self, satellites: list[Satellite]):
-        for satellite in satellites:
-            self.add_satellite(satellite)
-
-    def add_all_ground_stations(self, ground_stations: list[GroundStation]):
-        for ground_station in ground_stations:
-            self.add_ground_station(ground_station)
+    def update(self):
+        for topology_object in self.get_all_topology_objects():
+            topology_object.update()
 
 
 def create_satellite(satellite_name, satellite_id) -> Satellite:

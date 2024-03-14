@@ -11,12 +11,12 @@ Altitude isn't defined, it can be km or meter, it will depend on your implementa
 
 #### **TopologyObject** is a subclass of **SpatialPoint**. TopologyObject has children:
 - OrbitalObject: Object that are in orbit, **Satellite** (TelecomSatellite), space station, telescope, etc.
-  - **Satellite**: Space router that can connect to ground station, user terminal and other **Satellite**s
-- **GroundStation**: Station connected to the constellation and to the internet backbones
-- **UserTerminal**: Individual User connected to the constellation by a terminal (**Satellite** dish, phone, etc.)'
+  - **Satellite** 🛰: Space router that can connect to ground station, user terminal and other **Satellite**s
+- **GroundStation**📡: Station connected to the constellation and to the internet backbones
+- **UserTerminal**📻: Individual User connected to the constellation by a terminal (**Satellite** dish, phone, etc.)'
 
 #### Each topology object can connect through Links (**Link**)
-- **Link**: Parent class, define every link
+- **Link** 🌐: Parent class, define every link
   - **InterSatelliteLink**: Link between two satellites
   - **GroundStationLink**: Link between a **GroundStation** and a **Satellite**
   - **UserTerminalLink**: link between a **UserTerminal** and a **Satellite**

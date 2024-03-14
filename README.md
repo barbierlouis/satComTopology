@@ -1,25 +1,30 @@
+# Welcome to the SatComTopology project 🛰️
 
+The **satComTopology** is a project that have for goal to design a satellite communication topology.
+The objective is to generate a topology in order to **prepare a simulation**. The overall is a set of python module which 
+provides tools to build your future constellation environment. 
+The Simulation model can be exported in different format:
+- networkx: A famous network library that will allow you to compute routing, and execute basic algorithms.
+- Cesium : A visualization software that allow you to watch your constellation in 3D 🌍.
 
-# Welcome to the SatComTopology project
-## Presentation
-The sat com topology is a project that have for goal to design a satellite communication topology.
-The objective is to facilitate the usage of satCom simulator such has Hypatia.
+This project si the laboratory 🔬 where you can **design** your topologies.
 
-## Packages
+## Features 📢
+### Packages 📦
 - sat_com_model: [Topology Model](src/sat_com_model/README.md)
 - sat_com_builder: [Topology Simulation builder](src/sat_com_builder/README.md)
 - sat_com_adapter: [Topology Adapters](src/sat_com_adapter/README.md)
 - sat_com_trajectopy: [Topology Physic Manager](src/sat_com_trajectopy/README.md)
 - sat_com_application: [Topology Application](src/sat_com_application/README.md)
 
-## Installation
+## Installation 📃
 ## Install Main Version
 ```shell
 pip uninstall sat_com_topology -y
 pip install git+https://github.com/elbarbi/satComTopology.git@main#egg=sat_com_topology
 ```
 
-## Example
+## Example 🖊️
 ### Load a configuration
 An example of a YAML configuration is located [here](src/sat_com_builder/examples/configuration_example.yaml).
 ```python
@@ -81,3 +86,6 @@ networkx_adapter.adapt()
 ## Urgent Todo
 - Fixing networkx export, adapt() export a default topology, without data
 - Search a new way to implement a Data generator (generate distance, delay, etc.), maybe in the sat_com_trajectopy.
+
+## License
+The project is licensed under the GNU General Public License v3.0 license.

@@ -9,6 +9,22 @@ The Simulation model can be exported in different format:
 
 This project si the laboratory 🔬 where you can **design** your topologies.
 
+<!-- TOC -->
+* [Welcome to the SatComTopology project 🛰️](#welcome-to-the-satcomtopology-project-)
+  * [Features 📢](#features-)
+    * [Packages 📦](#packages-)
+  * [Installation 📃](#installation-)
+  * [Install Main Version](#install-main-version)
+  * [Example 🖊️](#example-)
+    * [Load a configuration](#load-a-configuration)
+    * [Manage a Simulation](#manage-a-simulation)
+      * [Export a Simulation](#export-a-simulation)
+      * [I just want my constellation in the good format](#i-just-want-my-constellation-in-the-good-format)
+  * [Tutorials 🎓](#tutorials-)
+  * [Urgent Todo 🚨](#urgent-todo-)
+  * [License ⚖️](#license-)
+<!-- TOC -->
+
 ## Features 📢
 ### Packages 📦
 - sat_com_model: [Topology Model](src/sat_com_model/README.md)
@@ -58,17 +74,20 @@ print(
 #### Export a Simulation
 In most of the cases, sat com topology user will need to load a simulation and export it as
 a new format.
+
 ```python
 from sat_com_adapter.adapters import NetworkXAdapter
-networkx_adapter = NetworkXAdapter(simulation_manager,"OUTPUT_PATH")
 
-my_graph = networkx_adapter.get_networkx_graph()
+networkx_adapter = NetworkXAdapter(simulation_manager, "OUTPUT_PATH")
+
+my_graph = networkx_adapter.create_full_networkx_graph()
 
 networkx_adapter.adapt()
 
 ```
 #### I just want my constellation in the good format
 Here a copy-paste friendly example of how to generate your topology and export it to networkx.
+
 ```python
 from sat_com_builder.configuration_manager import YamlConfigurationManager
 from sat_com_adapter.adapters import NetworkXAdapter
@@ -77,15 +96,20 @@ yaml_configuration_manager = YamlConfigurationManager("/CONFIGURATION_PATH/confi
 
 simulation_manager = yaml_configuration_manager.load_simulation()
 
-networkx_adapter = NetworkXAdapter(simulation_manager,"OUTPUT_PATH")
+networkx_adapter = NetworkXAdapter(simulation_manager, "OUTPUT_PATH")
 
-my_graph = networkx_adapter.get_networkx_graph()
+my_graph = networkx_adapter.create_full_networkx_graph()
 
 networkx_adapter.adapt()
 ```
-## Urgent Todo
+## Tutorials 🎓
+Here are some tutorials in the Jupyter Notebook format:
+- [Create my first simulation](https://github.com/elbarbi/sat_com_topology_tutorials/blob/main/src/create_my_first_simulation.ipynb)
+- [Learn to  deeply use satComTopology] coming soon...
+
+## Urgent Todo 🚨
 - Fixing networkx export, adapt() export a default topology, without data
 - Search a new way to implement a Data generator (generate distance, delay, etc.), maybe in the sat_com_trajectopy.
 
-## License
+## License ⚖️
 The project is licensed under the GNU General Public License v3.0 license.

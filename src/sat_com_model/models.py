@@ -29,6 +29,18 @@ class SpatialPosition:
         self.latitude = latitude
         self.altitude = altitude
 
+    def to_longitude_latitude(self) -> (float, float):
+        return self.longitude, self.latitude
+
+    def to_latitude_longitude(self) -> (float, float):
+        return self.latitude, self.longitude
+
+    def to_longitude_latitude_altitude(self) -> (float, float, float):
+        return self.longitude, self.latitude, self.altitude
+
+    def to_latitude_longitude_altitude(self) -> (float, float, float):
+        return self.latitude, self.longitude, self.altitude
+
     def __str__(self):
         return f"Longitude: {self.longitude}, Latitude: {self.latitude}, Altitude: {self.altitude}"
 
@@ -38,12 +50,20 @@ class SpatialPoint:
     This is the lower element of the stack. Every element in the topology has a position
     """
 
-    spatial_position: SpatialPosition
+    _spatial_position: SpatialPosition
 
     simulation_context: "Simulation"
 
+    @property
+    def spatial_position(self):
+        return self._spatial_position
+
+    @spatial_position.setter
+    def spatial_position(self, value):
+        self._spatial_position = value
+
     def __init__(self):
-        self.spatial_position = SpatialPosition()
+        self._spatial_position = SpatialPosition()
 
     def __str__(self):
         return self.spatial_position.__str__()
@@ -111,7 +131,7 @@ class TopologyObject(SpatialPoint):
 
 class MovementModel:
     """
-    This is the movement model class. This abstract class should be implemented using a orbit trajectory
+    This is the movement model class. This abstract class should be implemented using an orbit trajectory
     library.
     """
 
@@ -180,10 +200,14 @@ class OrbitalObject(TopologyObject):
         :return:
         """
 
+        return self.spatial_position
+
+    @property
+    def spatial_position(self):
         return self.get_movement_model().get_longitude_latitude()
 
     def update(self):
-        self.spatial_position = self.get_coordinates()
+        self.get_coordinates()
 
 
 class Satellite(OrbitalObject):
@@ -200,7 +224,11 @@ class Satellite(OrbitalObject):
 
 
 class GroundObject(TopologyObject):
-    pass
+    in_range_satellites: {Satellite: float}
+
+    def __init__(self):
+        super().__init__()
+        self.in_range_satellites = dict()
 
 
 class GroundStation(GroundObject):
@@ -230,15 +258,61 @@ class UserTerminal(GroundObject):
     type = "UserTerminal"
 
 
+class Flow:
+    id: int
+
+    source: TopologyObject
+    destination: TopologyObject
+
+    previous_hop: TopologyObject
+    next_hop: TopologyObject
+
+    size: int = 1
+
+
 class Link:
     """
-    This is the communication Link
-    Todo: maybe we should directly connect interface here
+    This is the communication Link. The link connects two Topological object.
+    Links are considered as bidirectional for this first version.
     """
 
     type: str
-    source: TopologyObject = None
-    destination: TopologyObject = None
+    source: TopologyObject | None
+    destination: TopologyObject | None
+
+    flows: list[Flow]
+
+    link_maximum_capacity: int = 100
+
+    disabled: bool
+
+    def __init__(self):
+        self.flows = []
+        self.source = None
+        self.destination = None
+        self.disabled = False
+
+    def get_used_capacity_between_hops_unidirectional(
+        self, previous_hop: TopologyObject, next_hop: TopologyObject
+    ) -> float:
+        concerned_flows = list(
+            filter(
+                lambda concerned_flow: concerned_flow.previous_hop == previous_hop
+                and concerned_flow.next_hop == next_hop,
+                self.flows,
+            )
+        )
+        total_used_capacity = 0
+        for flow in concerned_flows:
+            total_used_capacity += flow.size
+
+        return total_used_capacity
+
+    def total_capacity_between_hops_bidirectional(self) -> float:
+        total_used_capacity = 0
+        for flow in self.flows:
+            total_used_capacity += flow.size
+        return total_used_capacity
 
     def connect(self, source: TopologyObject, destination: TopologyObject):
         if source == destination:
@@ -331,6 +405,22 @@ class DistanceModel:
     ) -> float:
         pass
 
+    def k_closest(
+        self,
+        reference_point: SpatialPoint,
+        target_points: list[SpatialPoint],
+        k: int = 1,
+    ) -> list[SpatialPoint]:
+        pass
+
+    def spatial_position_in_range(
+        self,
+        reference_point: SpatialPoint,
+        target_points: list[SpatialPoint],
+        range_in_km: int = 1000,
+    ) -> list[SpatialPoint]:
+        pass
+
 
 def ground_station_link_is_connected_to_ground_station(
     ground_station_link: GroundStationLink, ground_station_object_id: int
@@ -393,10 +483,6 @@ class Simulation:
         topology_objects.extend(self.user_terminals)
 
         return topology_objects
-
-    def update(self):
-        for topology_object in self.get_all_topology_objects():
-            topology_object.update()
 
 
 def create_satellite(satellite_name, satellite_id) -> Satellite:

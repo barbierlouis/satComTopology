@@ -1,3 +1,7 @@
+import uuid
+from typing import Callable
+
+from sat_com_application.time_managers import SimulationTimeManager
 from sat_com_model.exceptions import TopologyObjectNotFoundError, LinkNotFoundError
 from sat_com_model.models import (
     Simulation,
@@ -9,6 +13,10 @@ from sat_com_model.models import (
     InterSatelliteLink,
     GroundStationLink,
     UserTerminalLink,
+    Flow,
+)
+from sat_com_model.specifications import (
+    SourceDestinationMatchWithLinkSpecification,
 )
 
 
@@ -63,10 +71,44 @@ class SimulationManager:
     We shouldn't put logic into the models.
     """
 
+    configuration: dict
+
     simulation: Simulation
+
+    time_manager: SimulationTimeManager
 
     def __init__(self, simulation: Simulation):
         self.simulation = simulation
+        self.configuration = dict()
+        self.enabled_update_functions = None
+
+    def set_time_manager(self, time_manager: SimulationTimeManager):
+        self.time_manager = time_manager
+        self.time_manager.register_action(self.__update)
+
+    enabled_update_functions: set[Callable] | None
+
+    @property
+    def update_protocol(self) -> set:
+        if self.enabled_update_functions is None:
+            return self.get_default_update_protocol()
+        else:
+            return self.enabled_update_functions
+
+    def __update(self):
+        for update_function in self.update_protocol:
+            update_function()
+
+    def append_flows(self, list_of_flows: list[list]) -> set[Link]:
+        """
+        Append to the Links a Flow object for every flow generated
+        :param list_of_flows: List of flows, a flow is a list of topology_uniq_id
+        :return: The links that contains the added flow
+        """
+        links = set()
+        for topology_paths in list_of_flows:
+            links.update(self.reconstruct_path_to_and_add_flow(topology_paths))
+        return links
 
     def add_satellite(self, satellite: Satellite):
         """
@@ -79,7 +121,7 @@ class SimulationManager:
 
     def add_ground_station(self, ground_station: GroundStation):
         """
-        Add ground station to the simulation. Automatically attribute a uniq topology id.
+        Add ground station to the simulation. Automatically attribute an uniq topology id.
         :param ground_station: Ground station instance to add
         :return:
         """
@@ -88,7 +130,7 @@ class SimulationManager:
 
     def add_user_terminals(self, user_terminal: UserTerminal):
         """
-        Add user terminals to the simulation. Automatically attribute a uniq topology id
+        Add user terminals to the simulation. Automatically attribute an uniq topology id
         :param user_terminal: User terminal instance to add
         :return:
         """
@@ -159,7 +201,7 @@ class SimulationManager:
         if len(matched_object) == 0:
             raise TopologyObjectNotFoundError()
 
-    def create_inter_satellite_link_connection(
+    def create_and_add_inter_satellite_link_connection(
         self, satellite_a: Satellite, satellite_b: Satellite
     ) -> InterSatelliteLink:
         """
@@ -174,11 +216,11 @@ class SimulationManager:
         self.simulation.inter_satellite_links.append(inter_satellite_link)
         return inter_satellite_link
 
-    def create_ground_station_link_connection(
+    def create_and_add_ground_station_link_connection(
         self, satellite: Satellite, ground_station: GroundStation
     ) -> GroundStationLink:
         """
-        Create ground station link between a satellite and a ground station
+        Create ground station link between a satellite and a ground station and append it to the simulation.
         :param satellite: Satellite instance
         :param ground_station: GroundStation instance
         :return: GroundStationLink instance
@@ -189,7 +231,7 @@ class SimulationManager:
         self.simulation.ground_station_links.append(ground_station_link)
         return ground_station_link
 
-    def create_user_terminal_link_connection(
+    def create_and_add_user_terminal_link_connection(
         self, satellite: Satellite, user_terminal: UserTerminal
     ) -> UserTerminalLink:
         """
@@ -208,7 +250,7 @@ class SimulationManager:
         """
         Add all satellites to the simulation from a list in argument
         :param satellites: List of satellites to add
-        :return: List of satellite
+        :return:
         """
         for satellite in satellites:
             self.add_satellite(satellite)
@@ -217,7 +259,7 @@ class SimulationManager:
         """
         Add all ground to the simulation from a list in argument
         :param ground_stations: List of ground stations to add
-        :return: List of ground station
+        :return:
         """
         for ground_station in ground_stations:
             self.add_ground_station(ground_station)
@@ -319,23 +361,13 @@ class SimulationManager:
         else:
             satellites_to_filter = self.simulation.satellites
 
-        closest_satellite = None
-        best_distance = None
-
-        for satellite in satellites_to_filter:
-            distance_in_km = self.get_distance_between_two_topology_object_km(
-                ground_station, satellite
-            )
-
-            if best_distance is None:
-                best_distance = distance_in_km
-                closest_satellite = satellite
-            else:
-                if best_distance > distance_in_km:
-                    best_distance = distance_in_km
-                    closest_satellite = satellite
-
-        return closest_satellite
+        closest_satellite = self.simulation.get_distance_model().k_closest(
+            ground_station, satellites_to_filter, 1
+        )[0]
+        if isinstance(closest_satellite, Satellite):
+            return closest_satellite
+        else:
+            raise TopologyObjectNotFoundError("Satellite not found")
 
     def get_ground_station_links_connected_to_a_ground_station(
         self, ground_station_id: int
@@ -349,7 +381,8 @@ class SimulationManager:
             filter(
                 lambda ground_station_link: ground_station_link_is_connected_to_ground_station(
                     ground_station_link, ground_station_id
-                ),
+                )
+                and ground_station_link.disabled == False,
                 self.simulation.ground_station_links,
             )
         )
@@ -401,23 +434,89 @@ class SimulationManager:
         """
         Get the link connecting two topology objects.  It will return  the first link found. It shouldn't have
         2 links.
+        Todo: Use specification specification
         :param topology_object_a: Topology object source
         :param topology_object_b: Topology object destination
         :return: Link connecting two topology objects, raise LinkNotFoundError if not found
         """
         for link in self.get_all_links():
-            if (
-                link.source.topology_uniq_id == topology_object_a.topology_uniq_id
-                and link.destination.topology_uniq_id
-                == topology_object_b.topology_uniq_id
-            ) or (
-                link.source.topology_uniq_id == topology_object_b.topology_uniq_id
-                and link.destination.topology_uniq_id
-                == topology_object_a.topology_uniq_id
-            ):
+            link_source_topology_id = link.source.topology_uniq_id
+            link_destination_topology_id = link.destination.topology_uniq_id
+
+            link_source_correspond_to_object_a = (
+                link_source_topology_id == topology_object_a.topology_uniq_id
+            )
+            link_source_correspond_to_object_b = (
+                link_destination_topology_id == topology_object_b.topology_uniq_id
+            )
+
+            link_is_connecting_object_a_to_object_b = (
+                link_source_correspond_to_object_a
+                and link_source_correspond_to_object_b
+            )
+
+            link_source_correspond_to_object_b = (
+                link_source_topology_id == topology_object_b.topology_uniq_id
+            )
+            link_destination_correspond_to_object_a = (
+                link_destination_topology_id == topology_object_a.topology_uniq_id
+            )
+
+            link_is_connecting_object_b_to_object_a = (
+                link_source_correspond_to_object_b
+                and link_destination_correspond_to_object_a
+            )
+
+            link_connect_objects = (
+                link_is_connecting_object_a_to_object_b
+                or link_is_connecting_object_b_to_object_a
+            )
+
+            if link_connect_objects:
                 return link
 
         raise LinkNotFoundError()
+
+    def reconstruct_path_to_and_add_flow(
+        self, topology_object_id_list: list[int]
+    ) -> list[Link]:
+        """
+        Retrieve every link connecting object in the list. Can be used to reconstruct a routing path
+        :param topology_object_id_list: List of topology object ID
+        :return: List of Link objects
+        """
+
+        flow_id = uuid.uuid4()
+
+        topology_object_id_source = topology_object_id_list[0]
+        topology_object_id_destination = topology_object_id_list[-1]
+
+        topology_objects = [
+            self.get_topology_object_from_uniq_id(object_id)
+            for object_id in topology_object_id_list
+        ]
+
+        list_link_flow = []
+
+        for i in range(len(topology_objects) - 1):
+            input_source = topology_objects[i]
+            output_destination = topology_objects[i + 1]
+
+            connected_link = self.get_link_connecting_topology_objects(
+                input_source, output_destination
+            )
+            flow = Flow()
+            flow.id = flow_id
+            flow.next_hop = output_destination
+            flow.previous_hop = input_source
+            flow.source = topology_object_id_source
+            flow.destination = topology_object_id_destination
+
+            connected_link.flows.append(flow)
+
+            list_link_flow.append(connected_link)
+
+        return list_link_flow
 
     def reconstruct_path(self, topology_object_id_list: list[int]) -> list[Link]:
         """
@@ -443,3 +542,204 @@ class SimulationManager:
             list_link.append(connected_link)
 
         return list_link
+
+    def connect_every_satellite_with_every_ground_stations(self):
+        """
+        This method will connect every satellite with every ground station, it will clear existing ground stations
+        links
+        :return:
+        """
+        self.simulation.ground_station_links.clear()
+
+        for ground_station in self.get_ground_stations():
+            for satellite in self.get_satellites():
+                self.create_and_add_ground_station_link_connection(
+                    satellite, ground_station
+                )
+
+    def connect_every_satellite_with_every_ground_stations_and_disable_un_connected(
+        self, ground_station_range: int
+    ):
+        """
+        This method will connect every satellite with every ground station, it will clear existing ground stations
+        links
+        :return:
+        """
+        self.simulation.ground_station_links.clear()
+
+        for ground_station in self.get_ground_stations():
+
+            satellites_in_range = (
+                self.simulation.get_distance_model().spatial_position_in_range(
+                    ground_station, self.get_satellites(), ground_station_range
+                )
+            )
+            for satellite in self.get_satellites():
+                created_ground_station_link = (
+                    self.create_and_add_ground_station_link_connection(
+                        satellite, ground_station
+                    )
+                )
+
+                created_ground_station_link.disabled = (
+                    satellite not in satellites_in_range
+                )
+
+    def get_ground_station_link(
+        self, ground_station: GroundStation, satellite: Satellite
+    ):
+        satellite_ground_station_match = SourceDestinationMatchWithLinkSpecification(
+            satellite, ground_station
+        )
+        ground_station_satellite_match = SourceDestinationMatchWithLinkSpecification(
+            ground_station, satellite
+        )
+
+        link_connect_both_specification = (
+            satellite_ground_station_match | ground_station_satellite_match
+        )
+
+        link_founds = list(
+            filter(
+                lambda ground_station_link: link_connect_both_specification(
+                    ground_station_link
+                ),
+                self.get_ground_stations_links(),
+            )
+        )
+        if len(link_founds) == 0:
+            raise LinkNotFoundError()
+
+        if len(link_founds) > 1:
+            raise Exception("Too many links connect the same source destination")
+
+        return link_founds[0]
+
+    def enable_ground_station_links(self, ground_station, ground_station_range: float):
+        satellites_in_range = (
+            self.simulation.get_distance_model().spatial_position_in_range(
+                ground_station, self.get_satellites(), int(ground_station_range)
+            )
+        )
+
+        for satellite in satellites_in_range:
+            if isinstance(satellite, Satellite):
+                ground_station_link = self.get_ground_station_link(
+                    ground_station, satellite
+                )
+                ground_station_link.disabled = False
+
+    def connect_ground_station_to_satellites(
+        self,
+        ground_station: GroundStation,
+        ground_station_range_in_km: float,
+    ):
+        """
+        Connect ground station to satellites.
+        Implement a way to limit the count of satellite connected to ground stations.
+        :param ground_station: Ground Station to connect to satellites
+        :param ground_station_range_in_km: Range of satellites to connect to satellites
+        :return:
+        """
+
+        satellites_in_range = (
+            self.simulation.get_distance_model().spatial_position_in_range(
+                ground_station, self.get_satellites(), int(ground_station_range_in_km)
+            )
+        )
+        for satellite in satellites_in_range:
+            if isinstance(satellite, Satellite):
+                self.create_and_add_ground_station_link_connection(
+                    satellite, ground_station
+                )
+            else:
+                raise ValueError(
+                    "An object of type " + type(satellite).__name__ + " wasn't expected"
+                )
+
+    def __update_ground_stations_in_static_mode(self):
+        """
+        This method will disable all ground station link that aren't connected
+        :return:
+        """
+        self.simulation.ground_station_links.clear()
+
+        self.connect_every_satellite_with_every_ground_stations_and_disable_un_connected(
+            self.configuration.get("ground_station_link_range")
+        )
+
+    def __update_ground_stations_default(self):
+        """
+        This method will delete all ground station links and will create new ones
+        :return:
+        """
+        self.simulation.ground_station_links.clear()
+
+        for ground_station in self.get_ground_stations():
+            self.connect_ground_station_to_satellites(
+                ground_station, self.configuration.get("ground_station_link_range")
+            )
+
+    def update_ground_station_links(self):
+        """
+        Update the ground station links. This will connect ground station to satellites based on their position and their
+        range.
+        :return:
+        """
+
+        static_ground_station_link_mode = self.configuration.get(
+            "static_ground_station_link_mode", False
+        )
+        if static_ground_station_link_mode:
+            if len(self.get_ground_stations_links()) == 0:
+                self.connect_every_satellite_with_every_ground_stations()
+
+            self.__update_ground_stations_in_static_mode()
+            return
+
+        self.__update_ground_stations_default()
+
+    def update_satellites(self):
+        """
+        Update the satellites. This will call the update method of each satellite object.
+        :return:
+        """
+        for satellite in self.get_satellites():
+            satellite.update()
+
+    def update_ground_stations(self):
+        """
+        Update the ground stations. This will call the update method of each ground station object.
+        :return:
+        """
+        for ground_station in self.get_ground_stations():
+            ground_station.update()
+
+    def update_user_terminal(self):
+        """
+        Update the user terminal object. This will call the update method of each user terminal object.
+        :return:
+        """
+        for user_terminal in self.get_user_terminals():
+            user_terminal.update()
+
+    def update_user_terminal_links(self):
+        raise NotImplementedError()
+
+    def add_to_update_protocol(self, callable_update: Callable):
+        self.enabled_update_functions.add(callable_update)
+
+    def remove_from_update_protocol(self, callable_remove: Callable):
+        self.enabled_update_functions.remove(callable_remove)
+
+    def set_callable_protocol(self, update_callables: set[Callable]):
+        self.enabled_update_functions = update_callables
+
+    def get_default_update_protocol(self) -> set:
+        """
+        The default update protocol will update:
+        - Satellites
+        - GroundStations links
+        :return:
+        """
+        return {self.update_satellites, self.update_ground_station_links}

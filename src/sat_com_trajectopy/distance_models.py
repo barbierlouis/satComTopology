@@ -49,9 +49,9 @@ class GeopyDistanceModel(DistanceModel):
     def k_closest(
         self,
         reference_point: SpatialPoint,
-        target_points: [SpatialPoint],
+        target_points: list[SpatialPoint],
         k: int = 1,
-    ) -> [SpatialPoint]:
+    ) -> list[SpatialPoint]:
         spatial_point_with_distance_in_km = []
         for target_point in target_points:
             distance_between_satellite_and_ground_station = self.get_distance_km(
@@ -79,7 +79,7 @@ class GeopyDistanceModel(DistanceModel):
         reference_point: SpatialPoint,
         target_points: list[SpatialPoint],
         range_in_km: int = 1000,
-    ) -> [SpatialPoint]:
+    ) -> list[SpatialPoint]:
         spatial_points_in_range = []
         for target_point in target_points:
             distance_between_satellite_and_ground_station = self.get_distance_km(
@@ -184,7 +184,7 @@ def execute_balltree_query_with_haversine_distance(
 
 
 def map_ball_tree_result_with_ball_tree_entries(
-    indices: [], topology_object_positions: [], topology_objects: [TopologyObject]
+    indices: [], topology_object_positions: [], topology_objects: list[TopologyObject]
 ):
     indices_with_its_entries_object = []
 
@@ -192,16 +192,23 @@ def map_ball_tree_result_with_ball_tree_entries(
         topology_object_positions_as_np_array = np.array(topology_object_positions)[
             position_indices
         ]
-        nearest_topology_object = list(
-            filter(
-                lambda topology_object: (
-                    topology_object.get_coordinates().latitude,
-                    topology_object.get_coordinates().longitude,
+
+        nearest_topology_object = [
+            topology_object
+            for topology_object in topology_objects
+            if np.any(
+                np.all(
+                    np.array(
+                        [
+                            topology_object.get_coordinates().latitude,
+                            topology_object.get_coordinates().longitude,
+                        ]
+                    )
+                    == topology_object_positions_as_np_array,
+                    axis=1,
                 )
-                in topology_object_positions_as_np_array,
-                topology_objects,
             )
-        )
+        ]
         indices_with_its_entries_object.append(nearest_topology_object)
 
     return indices_with_its_entries_object
@@ -250,8 +257,8 @@ def calculate_topology_objects_in_range_of_topology_objects(
     for topology_object_input, research_result in zip(
         topology_object_inputs, result_as_list_of_topology_object
     ):
-
-        research_result.remove(topology_object_input)
+        if topology_object_input in research_result:
+            research_result.remove(topology_object_input)
 
         result_dictionary.update({topology_object_input: research_result})
 
@@ -374,16 +381,11 @@ class SkLearningDistanceModel(DistanceModel):
 
         query_result = np.array(target_latitudes_longitudes)[indices[0]]
 
-        spatial_point_result = list(
-            filter(
-                lambda spatial_point: (
-                    spatial_point.spatial_position.latitude,
-                    spatial_point.spatial_position.longitude,
-                )
-                in query_result,
-                target_points,
-            )
-        )
+        spatial_point_result = [
+            target_points[i]
+            for i, point in enumerate(target_latitudes_longitudes)
+            if any((point == query_result).all(axis=1))
+        ]
 
         return spatial_point_result
 

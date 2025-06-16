@@ -14,7 +14,8 @@ This project si the laboratory 🔬 where you can **design** your topologies.
   * [Features 📢](#features-)
     * [Packages 📦](#packages-)
   * [Installation 📃](#installation-)
-  * [Install Main Version](#install-main-version)
+    * [Install Main Version from GitLab](#install-main-version-from-gitlab)
+    * [Install Main Version from GitHub](#install-main-version-from-github)
   * [Example 🖊️](#example-)
     * [Load a configuration](#load-a-configuration)
     * [Manage a Simulation](#manage-a-simulation)
@@ -33,17 +34,26 @@ This project si the laboratory 🔬 where you can **design** your topologies.
 - sat_com_trajectopy: [Topology Physic Manager](src/sat_com_trajectopy/README.md)
 - sat_com_application: [Topology Application](src/sat_com_application/README.md)
 - sat_com_topology_traffic: [Topology Traffic](src/sat_com_traffic/README.md) (Bêta version)
+- sat_com_connectivity: [Topology Connectivity](src/sat_com_connectivity/README.md)
 
 ## Installation 📃
-## Install Main Version
-```shell
+Uninstall if already installed:
+```sh
 pip uninstall sat_com_topology -y
+```
+### Install Main Version from GitLab
+```sh
+pip install git+https://gitlab.isae-supaero.fr/eqospace/sat-com-topology.git@main#egg=sat_com_topology
+```
+
+### Install Main Version from GitHub
+```shell
 pip install git+https://github.com/elbarbi/satComTopology.git@main#egg=sat_com_topology
 ```
 
 ## Example 🖊️
 ### Load a configuration
-An example of a YAML configuration is located [here](src/sat_com_builder/examples/configuration_example.yaml).
+An example of a YAML configuration is located [here](src/sat_com_builder/examples/multi_shell_configuration_example.yaml).
 ```python
 from sat_com_builder.configuration_manager import YamlConfigurationManager
 
@@ -93,7 +103,7 @@ Here a copy-paste friendly example of how to generate your topology and export i
 from sat_com_builder.configuration_manager import YamlConfigurationManager
 from sat_com_adapter.adapters import NetworkXAdapter
 
-yaml_configuration_manager = YamlConfigurationManager("/CONFIGURATION_PATH/configuration_example.yaml")
+yaml_configuration_manager = YamlConfigurationManager("/CONFIGURATION_PATH/old_configuration_example.yaml")
 
 simulation_manager = yaml_configuration_manager.load_simulation()
 
@@ -106,7 +116,10 @@ networkx_adapter.adapt("OUTPUT_PATH")
 ## Tutorials 🎓
 Here are some tutorials in the Jupyter Notebook format:
 - [Create my first simulation](https://github.com/elbarbi/sat_com_topology_tutorials/blob/main/src/create_my_first_simulation.ipynb)
-- [Learn to  deeply use satComTopology] coming soon...
+- [Learn to  deeply use satComTopology](https://github.com/elbarbi/satComTopologyTutorials/blob/main/src/deeply_understand_sat_com_topology.ipynb)
+
+The tutorials aren't on gitlab yet, to have an access:
+louis.barbier at isae-supaero.fr
 
 ## Contributing
 The contributing guide is [here](https://github.com/elbarbi/satComTopology/blob/develop/CONTRIBUTING.md).

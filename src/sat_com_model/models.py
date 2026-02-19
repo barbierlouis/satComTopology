@@ -1,7 +1,9 @@
-import abc
+from __future__ import annotations
+
+import warnings
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Optional, List, Tuple, Dict
+from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field, ConfigDict, computed_field
@@ -30,16 +32,20 @@ class SpatialPosition(BaseModel):
     latitude: float = Field(default=None)
     altitude: float = Field(default=None)
 
-    def to_longitude_latitude(self) -> (float, float):
+    def to_longitude_latitude(self) -> tuple[float | None, float | None]:
         return self.longitude, self.latitude
 
-    def to_latitude_longitude(self) -> (float, float):
+    def to_latitude_longitude(self) -> tuple[float | None, float | None]:
         return self.latitude, self.longitude
 
-    def to_longitude_latitude_altitude(self) -> (float, float, float):
+    def to_longitude_latitude_altitude(
+        self,
+    ) -> tuple[float | None, float | None, float | None]:
         return self.longitude, self.latitude, self.altitude
 
-    def to_latitude_longitude_altitude(self) -> (float, float, float):
+    def to_latitude_longitude_altitude(
+        self,
+    ) -> tuple[float | None, float | None, float | None]:
         return self.latitude, self.longitude, self.altitude
 
     def __str__(self):
@@ -106,7 +112,7 @@ class TopologyObject(SpatialPoint):
     type: str = Field(default="TypologyObject", frozen=True)
 
     """These are the links that this object has with other objects in the topology"""
-    links: List["Link"] = Field(default_factory=list, exclude=True)
+    links: list[Link] = Field(default_factory=list, exclude=True, repr=False)
 
     @computed_field
     @property
@@ -166,7 +172,17 @@ class MovementModel(ABC):
         pass
 
     @abstractmethod
-    def get_longitude_latitude(self) -> SpatialPosition:
+    def get_longitude_latitude(self):
+        warnings.warn(
+            "get_longitude_latitude() is deprecated and will be removed in a future version. "
+            "Use get_longitude_latitude_altitude() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.get_longitude_latitude_altitude()
+
+    @abstractmethod
+    def get_longitude_latitude_altitude(self) -> SpatialPosition:
         """
         Return the longitude, latitude  and elevation on ground of the orbital object
         :return:
@@ -174,7 +190,7 @@ class MovementModel(ABC):
         pass
 
     @abstractmethod
-    def get_position_earth_general_inertial(self) -> (float, float, float):
+    def get_position_earth_general_inertial(self) -> tuple[float, float, float]:
         """
         This method returns the position of the orbital object in the referential of EGI.
         It can be used in the is_ascending method.
@@ -188,6 +204,8 @@ class WalkerShell(BaseModel):
     type: str
     amount_of_orbit_plane: int
     amount_of_satellite_per_orbit_plane: int
+    inclination: float = Field(default=98.7)
+    mean_revolution_per_day: float = Field(default=14.25)
 
     adjacent_inter_satellite_shifting: int = Field(default=0)
     maximum_inter_satellite_range_distance: Optional[float] = None
@@ -197,7 +215,7 @@ class WalkerShell(BaseModel):
     maximum_connected_user_terminal: Optional[int] = None
     maximum_connected_ground_station: Optional[int] = None
 
-    ground_object_white_list: List[str] = Field(default_factory=list)
+    ground_object_white_list: list[str] = Field(default_factory=list)
 
 
 class GroundObjectDomain(BaseModel):
@@ -208,7 +226,7 @@ class GroundObjectDomain(BaseModel):
     elevation_above_horizon: float = Field(default=20)
     maximum_satellite_range_distance: float = Field(default=1000)
     maximum_satellite_connected_count: Optional[int] = None
-    shell_white_lists: List[str] = Field(default_factory=list)
+    shell_white_lists: list[str] = Field(default_factory=list)
     maximum_connected_satellites: Optional[int] = None
     ground_to_space_connections_strategy: str = Field(default="")
 
@@ -273,7 +291,9 @@ class OrbitalObject(TopologyObject):
 
     @property
     def spatial_position(self):
-        computed_spatial_position = self.get_movement_model().get_longitude_latitude()
+        computed_spatial_position = (
+            self.get_movement_model().get_longitude_latitude_altitude()
+        )
         self.spatial_position_info = computed_spatial_position
         return computed_spatial_position
 
@@ -526,12 +546,18 @@ class GroundObjectLink(Link):
 
 
 class DistanceModel:
-    def get_distance_meters(
+
+    def get_3d_distance_meters(
+        self, spatial_position_1: SpatialPosition, spatial_position_2: SpatialPosition
+    ):
+        pass
+
+    def get_ground_distance_meters(
         self, spatial_position_1: SpatialPosition, spatial_position_2: SpatialPosition
     ) -> float:
         pass
 
-    def get_distance_km(
+    def get_ground_distance_km(
         self, spatial_position_1: SpatialPosition, spatial_position_2: SpatialPosition
     ) -> float:
         pass
@@ -544,7 +570,7 @@ class DistanceModel:
     ) -> list[SpatialPoint]:
         pass
 
-    def spatial_position_in_range(
+    def spatial_position_on_ground_in_range(
         self,
         reference_point: SpatialPoint,
         target_points: list[SpatialPoint],
@@ -572,21 +598,21 @@ class Simulation:
 
     simulation_name: str
 
-    satellites: List[Satellite]
-    inter_satellite_links: List[InterSatelliteLink]
+    satellites: list[Satellite]
+    inter_satellite_links: list[InterSatelliteLink]
 
-    ground_object_links: List[GroundObjectLink]
+    ground_object_links: list[GroundObjectLink]
 
-    ground_stations: List[GroundStation]
-    ground_station_links: List[GroundStationLink]
+    ground_stations: list[GroundStation]
+    ground_station_links: list[GroundStationLink]
 
-    user_terminals: List[UserTerminal]
-    user_terminal_links: List[UserTerminalLink]
+    user_terminals: list[UserTerminal]
+    user_terminal_links: list[UserTerminalLink]
 
-    point_of_presences: List[PointOfPresence]
+    point_of_presences: list[PointOfPresence]
 
-    walker_shells: List[WalkerShell]
-    ground_object_domains: List[GroundObjectDomain]
+    walker_shells: list[WalkerShell]
+    ground_object_domains: list[GroundObjectDomain]
 
     distance_model: DistanceModel = None
 

@@ -38,7 +38,7 @@ default:
         echo "PRIVATE_PYPI_URL_READ is not set. Skipping extra-index-url config."
       fi
 
-    - pip install hatchling twine
+    - pip install hatch hatchling twine
 
 
 lint:
@@ -52,13 +52,14 @@ test:
   script:
     - pip install -r requirements.txt # --extra-index-url "${PRIVATE_PYPI_URL}"
     - pip install pytest # --extra-index-url "${PRIVATE_PYPI_URL}"
+    - pip install esprima beautifulsoup4
     - pytest
 
 
 build_package:
   stage: build
   script:
-    - hatch build
+    - python -m hatch build
     - python -m twine check dist/*
   artifacts:
     paths:
@@ -68,6 +69,8 @@ build_package:
     - if: '$CI_COMMIT_TAG'
       when: on_success
     - if: '$CI_COMMIT_BRANCH == "main"'
+      when: on_success
+    - if: '$CI_COMMIT_BRANCH =~ /^release\/v/'
       when: on_success
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       when: on_success

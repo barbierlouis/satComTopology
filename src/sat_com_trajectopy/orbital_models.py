@@ -40,7 +40,7 @@ class PyOrbitalModel(MovementModel):
         # Check the sign of the z-coordinate to determine if in the ascending node
         return velocity[2] > 0
 
-    def get_longitude_latitude(self) -> SpatialPosition:
+    def get_longitude_latitude_altitude(self) -> SpatialPosition:
         """
         Return the longitude and latitude AND the altitude of the orbital object as a spatial position.
 
@@ -68,14 +68,17 @@ class PyOrbitalModel(MovementModel):
         )
 
         new_position = SpatialPosition(
-            longitude=longitude, latitude=latitude, altitude=altitude
+            longitude=longitude, latitude=latitude, altitude=altitude * 1000
         )
         self.last_spatial_position = new_position
         self.last_time_position_calculated = self.clock.get_current_time()
 
         return new_position
 
-    def get_position_earth_general_inertial(self) -> (float, float, float):
+    def get_longitude_latitude(self):
+        return self.get_longitude_latitude_altitude()
+
+    def get_position_earth_general_inertial(self) -> tuple[float, float, float]:
         """
         Calculate the earth general inertial position. It is useful to know if object is
         ascending or descending for example.

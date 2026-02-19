@@ -35,7 +35,7 @@ from sat_com_model.specifications import (
 
 def get_object_by_object_id(
     object_id: int, topology_objects: list, domain: str = "public"
-) -> Satellite | GroundStation | UserTerminal | PointOfPresence:
+) -> Satellite | GroundStation | UserTerminal | PointOfPresence | None:
     """
     Return the topology object matching its object_id
     :param domain: Domain where the object belong. If missing public domain will be provided
@@ -113,10 +113,10 @@ class SimulationManager:
         self.time_manager = time_manager
         self.time_manager.register_action(self.__update)
 
-    enabled_update_functions: set[Callable] | None
+    enabled_update_functions: list[Callable] | None
 
     @property
-    def update_protocol(self) -> set:
+    def update_protocol(self) -> list[Callable]:
         if self.enabled_update_functions is None:
             return self.get_default_update_protocol()
         else:
@@ -437,7 +437,7 @@ class SimulationManager:
         :param object_2: Topology object  B
         :return: float: Distance between two topology objects
         """
-        return self.simulation.get_distance_model().get_distance_km(
+        return self.simulation.get_distance_model().get_ground_distance_km(
             object_1.get_coordinates(), object_2.get_coordinates()
         )
 
@@ -692,12 +692,10 @@ class SimulationManager:
 
         for user_terminal in self.get_user_terminals():
             simulation_domain = self.get_ground_object_domain(user_terminal.domain)
-            satellites_in_range = (
-                self.simulation.get_distance_model().spatial_position_in_range(
-                    user_terminal,
-                    self.get_satellites(),
-                    int(simulation_domain.maximum_satellite_range_distance),
-                )
+            satellites_in_range = self.simulation.get_distance_model().spatial_position_on_ground_in_range(
+                user_terminal,
+                self.get_satellites(),
+                int(simulation_domain.maximum_satellite_range_distance),
             )
             for satellite in self.get_satellites():
                 created_user_terminal_link = (
@@ -722,12 +720,10 @@ class SimulationManager:
 
         for ground_station in self.get_ground_stations():
             simulation_domain = self.get_ground_object_domain(ground_station.domain)
-            satellites_in_range = (
-                self.simulation.get_distance_model().spatial_position_in_range(
-                    ground_station,
-                    self.get_satellites(),
-                    int(simulation_domain.maximum_satellite_range_distance),
-                )
+            satellites_in_range = self.simulation.get_distance_model().spatial_position_on_ground_in_range(
+                ground_station,
+                self.get_satellites(),
+                int(simulation_domain.maximum_satellite_range_distance),
             )
             for satellite in self.get_satellites():
                 created_ground_station_link = (
@@ -772,7 +768,7 @@ class SimulationManager:
 
     def enable_ground_station_links(self, ground_station, ground_station_range: float):
         satellites_in_range = (
-            self.simulation.get_distance_model().spatial_position_in_range(
+            self.simulation.get_distance_model().spatial_position_on_ground_in_range(
                 ground_station, self.get_satellites(), int(ground_station_range)
             )
         )
@@ -813,7 +809,7 @@ class SimulationManager:
             return
 
         satellites_in_range = (
-            self.simulation.get_distance_model().spatial_position_in_range(
+            self.simulation.get_distance_model().spatial_position_on_ground_in_range(
                 user_terminal,
                 self.get_satellites(),
                 int(maximum_satellite_range_distance),
@@ -846,7 +842,7 @@ class SimulationManager:
             return
 
         satellites_in_range = (
-            self.simulation.get_distance_model().spatial_position_in_range(
+            self.simulation.get_distance_model().spatial_position_on_ground_in_range(
                 ground_station, self.get_satellites(), int(ground_station_range_in_km)
             )
         )
@@ -905,7 +901,23 @@ class SimulationManager:
 
         return topology_object
 
-    def remove_cascade_topology_object(
+    def remove_cascade_topology_object(self, topology_object: TopologyObject):
+        for link in topology_object.links:
+            self.remove_link(link)
+
+        topology_object.links.clear()
+        if isinstance(topology_object, Satellite):
+            self.simulation.satellites.remove(topology_object)
+        elif isinstance(topology_object, GroundStation):
+            self.simulation.ground_stations.remove(topology_object)
+        elif isinstance(topology_object, UserTerminal):
+            self.simulation.user_terminals.remove(topology_object)
+        elif isinstance(topology_object, PointOfPresence):
+            self.simulation.point_of_presences.remove(topology_object)
+        else:
+            raise ValueError("Topology object type unknown: " + topology_object.type)
+
+    def remove_cascade_topology_object_by_id(
         self, topology_object_id: int
     ) -> list[TopologyObject]:
         """
@@ -929,6 +941,38 @@ class SimulationManager:
         self.__remove_topology_object(topology_object)
 
         return removed_objects
+
+    def remove_all_terminal_users(self):
+        """
+        Remove all user terminals from the simulation.
+        :return:
+        """
+        for user_terminal in self.get_user_terminals():
+            self.remove_cascade_topology_object(user_terminal)
+
+    def remove_all_ground_stations(self):
+        """
+        Remove all ground stations from the simulation.
+        :return:
+        """
+        for ground_station in self.get_ground_stations():
+            self.remove_cascade_topology_object(ground_station)
+
+    def remove_all_satellites(self):
+        """
+        Remove all satellites from the simulation.
+        :return:
+        """
+        for satellite in self.get_satellites():
+            self.remove_cascade_topology_object(satellite)
+
+    def remove_all_point_of_presences(self):
+        """
+        Remove all points of presences from the simulation.
+        :return:
+        """
+        for point_of_presence in self.simulation.point_of_presences:
+            self.remove_cascade_topology_object(point_of_presence)
 
     def __update_user_terminal_links_in_static_mode(self):
         """
@@ -1043,22 +1087,28 @@ class SimulationManager:
             self.__update_user_terminal_links_default()
 
     def add_to_update_protocol(self, callable_update: Callable):
-        self.enabled_update_functions.add(callable_update)
+        self.enabled_update_functions.append(callable_update)
 
     def remove_from_update_protocol(self, callable_remove: Callable):
         self.enabled_update_functions.remove(callable_remove)
 
-    def set_callable_protocol(self, update_callables: set[Callable]):
+    def set_callable_protocol(self, update_callables: list[Callable]):
         self.enabled_update_functions = update_callables
 
-    def get_default_update_protocol(self) -> set:
+    def get_default_update_protocol(self) -> list[Callable]:
         """
         The default update protocol will update:
         - Satellites
         - GroundStations links
         :return:
         """
-        return {self.update_satellites, self.update_ground_station_links}
+        return [
+            self.update_satellites,
+            self.update_ground_stations,
+            self.update_user_terminal,
+            self.update_ground_station_links,
+            self.update_user_terminal_links,
+        ]
 
     def add_walker_shell(self, walker_shell: WalkerShell):
         self.simulation.walker_shells.append(walker_shell)

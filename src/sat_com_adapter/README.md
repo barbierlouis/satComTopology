@@ -82,7 +82,7 @@ graph_as_dict_structure = {
               1: 150, # previous hop is 1 (link "source"), next hop is 2
               2: 200  # previous hop is 2 (link "destination"), next hop is 1
             },
-            "distance": 5000, # In meters
+            "distance": 500000, # In meters
         },
         {
             "type": "InterSatelliteLink",
@@ -93,7 +93,7 @@ graph_as_dict_structure = {
               1: 15, # previous hop is 1 (link "source"), next hop is 2
               24: 142  # previous hop is 24 (link "destination"), next hop is 1
             },
-            "distance": 5000, # In meters          
+            "distance": 500000, # In meters          
         }
     ]
 }
@@ -204,27 +204,41 @@ cesium_adapter.adapt("my_out_put_folder")
 ```
 ### With custom render
 
+Customize your renderer with the CesiumRenderer API, then set it in the adapter before calling adapt() method.
+You can access to CesiumRenderer docs here: [CesiumRenderer API](cesium_renderer/README.md).
+
 ```python
 from sat_com_application.simulation_manager import SimulationManager
 from sat_com_model.models import Simulation
 from sat_com_adapter.cesium_renderer.renderers import CesiumRenderer
 from sat_com_adapter.adapters import CesiumAdapter
+from sat_com_adapter.cesium_renderer.models import CesiumProperty
 
 my_example_simulation = Simulation()
 
-simulation_manager = SimulationManager(my_example_simulation)
+simulation_manager = SimulationManager(simulation=my_example_simulation)
 
-cesium_adapter = CesiumAdapter(simulation_manager)
+cesium_adapter = CesiumAdapter(
+  simulation_manager=simulation_manager
+)
 
-custom_renderer = CesiumRenderer(simulation_manager, "MY_SUPER_SECRET_CESIUM_TOKEN_OR_NOTHING")
+cesium_property = CesiumProperty()
+
+cesium_property.cesium_token = "MY_SUPER_SECRET_CESIUM_TOKEN_OR_NOTHING"
+
+custom_renderer = CesiumRenderer(
+  simulation_manager=simulation_manager, 
+  cesium_renderer_property=cesium_property
+)
 
 custom_renderer.add_satellites()
 
 custom_renderer.add_ground_stations()
 
-cesium_adapter.set_custom_renderer(custom_renderer)
+cesium_adapter.set_custom_renderer(cesium_renderer=custom_renderer)
 
-cesium_adapter.adapt("my_out_put_folder")
+cesium_adapter.adapt("my_file_name.html")
+
 ```
 
 ![Satellite topology generated with CesiumJS](cesium_renderer/example/topology-render-example.png "Example of Satellite Topology")

@@ -65,7 +65,9 @@ class NetworkxBuilder:
                 }
             )
         data.update(
-            type=topology_object.get_type(), object_id=topology_object.object_id
+            type=topology_object.get_type(),
+            object_id=topology_object.object_id,
+            topology_uniq_id=topology_object.topology_uniq_id,
         )
 
         if self.enable_export_grid_coordinates and isinstance(
@@ -114,7 +116,7 @@ class NetworkxBuilder:
         data.update(type=link.type)
 
         if self.enable_export_link_length:
-            distance = self.simulation_manager.simulation.get_distance_model().get_distance_meters(
+            distance = self.simulation_manager.simulation.get_distance_model().get_3d_distance_meters(
                 source.spatial_position, destination.spatial_position
             )
             data.update(distance=distance)
